@@ -33,12 +33,18 @@ function renderAuth(mode) {
           </div>
           <div class="form-group">
             <label>Password ${!isLogin ? "(min. 8 characters)" : ""}</label>
-            <input type="password" id="password" placeholder="••••••••" required />
+            <div style="position:relative">
+              <input type="password" id="password" placeholder="••••••••" required style="padding-right:44px" />
+              <button type="button" onclick="togglePw('password',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem">👁</button>
+            </div>
           </div>
           ${!isLogin ? `
           <div class="form-group">
             <label>Confirm Password</label>
-            <input type="password" id="confirm" placeholder="••••••••" required />
+            <div style="position:relative">
+              <input type="password" id="confirm" placeholder="••••••••" required style="padding-right:44px" />
+              <button type="button" onclick="togglePw('confirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem">👁</button>
+            </div>
           </div>` : ""}
           <button type="submit" class="btn btn-primary" id="auth-btn">
             ${isLogin ? "Sign In" : "Create Account"}
@@ -402,6 +408,18 @@ async function apiFetch(url, method = "GET", body = null) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
+}
+
+// ─── Toggle password visibility ──────────────────────────────────────────────
+function togglePw(id, btn) {
+  const input = document.getElementById(id);
+  if (input.type === "password") {
+    input.type = "text";
+    btn.textContent = "🙈";
+  } else {
+    input.type = "password";
+    btn.textContent = "👁";
+  }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

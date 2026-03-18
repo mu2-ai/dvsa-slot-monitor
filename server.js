@@ -6,9 +6,15 @@ const SqliteStore = require("better-sqlite3-session-store")(session);
 const cron = require("node-cron");
 const cors = require("cors");
 const path = require("path");
+const webpush = require("web-push");
 const db = require("./db");
-const { runMonitor, sendTelegram } = require("./monitor");
+const { runMonitor } = require("./monitor");
 const { sendVerificationEmail, sendWelcomeEmail, sendSlotAlertEmail } = require("./email");
+
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || "BMuUj7qHtBKMQ5tboUD2GEPNV_NN47cr69ynSj36vdYjS8yYe2cDAaRZjpVh7i_xyenlSPoWGUqqioXPv8z-8jw";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "EVPIaare5soh1xjH8g2US04baqFrv4A_lme8rmvk6xM";
+
+webpush.setVapidDetails("mailto:admin@dvsa-monitor.app", VAPID_PUBLIC, VAPID_PRIVATE);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -275,6 +281,31 @@ app.get("/api/alerts/:monitorId", auth, requireVerified, (req, res) => {
   res.json(alerts);
 });
 
+// ─── Push Notification Routes ─────────────────────────────────────────────────
+app.get("/api/push/vapid-public-key", (req, res) => {
+  res.json({ key: VAPID_PUBLIC });
+});
+
+app.post("/api/push/subscribe", auth, requireVerified, (req, res) => {
+  const { endpoint, keys } = req.body;
+  if (!endpoint || !keys?.p256dh || !keys?.auth)
+    return res.status(400).json({ error: "Invalid subscription" });
+
+  db.prepare(`
+    INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+    VALUES (?, ?, ?, ?)
+  `).run(req.user.id, endpoint, keys.p256dh, keys.auth);
+
+  res.json({ message: "Subscribed" });
+});
+
+app.delete("/api/push/unsubscribe", auth, (req, res) => {
+  const { endpoint } = req.body;
+  db.prepare("DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?")
+    .run(req.user.id, endpoint);
+  res.json({ message: "Unsubscribed" });
+});
+
 // ─── Cron ─────────────────────────────────────────────────────────────────────
 cron.schedule("*/5 * * * *", async () => {
   const monitors = db.prepare(`
@@ -301,6 +332,25 @@ cron.schedule("*/5 * * * *", async () => {
           .run(monitor.id, slot.name, slot.dates.join(", "));
       });
       sendSlotAlertEmail(monitor.user_email, result.available).catch(console.error);
+
+      // Send browser push notifications to this user
+      const centres = result.available.map(s => s.name).join(", ");
+      const subs = db.prepare("SELECT * FROM push_subscriptions WHERE user_id = ?").all(monitor.user_id);
+      for (const sub of subs) {
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify({
+            title: "🚗 DVSA Slots Available!",
+            body: `Slots open at: ${centres}. Book fast!`,
+            url: "/"
+          })
+        ).catch(e => {
+          if (e.statusCode === 410) {
+            // Subscription expired — remove it
+            db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(sub.endpoint);
+          }
+        });
+      }
     }
   }
 });

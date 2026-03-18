@@ -4,6 +4,8 @@ let userSub = null;
 let userTrialActive = false;
 let userTrialEnds = null;
 let currentPage = "dashboard";
+let autoRefreshTimer = null;
+let lastSlotHash = "";
 
 const app = document.getElementById("app");
 
@@ -227,7 +229,29 @@ function renderLayout() {
 
 function navigate(page) {
   currentPage = page;
+  stopAutoRefresh();
   renderLayout();
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  autoRefreshTimer = setInterval(async () => {
+    if (currentPage !== "dashboard") return;
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    try {
+      const monitors = await apiFetch("/api/monitors");
+      const hash = JSON.stringify(monitors.map(m => m.last_result + m.last_checked));
+      if (hash !== lastSlotHash) {
+        lastSlotHash = hash;
+        await renderDashboard(main);
+      }
+    } catch {}
+  }, 60000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
 }
 
 async function logout() {
@@ -253,6 +277,7 @@ async function loadPage(page) {
 }
 
 async function renderDashboard(el) {
+  startAutoRefresh();
   const monitors = await apiFetch("/api/monitors");
   const active = monitors.filter(m => m.active).length;
 
@@ -293,11 +318,24 @@ async function renderDashboard(el) {
       <a href="https://www.gov.uk/book-driving-test" target="_blank" class="btn btn-book">Book Now →</a>
     </div>` : "";
 
+  const pushState = await getPushState();
+
   el.innerHTML = `
     ${slotBanner}
     <div class="page-header">
-      <h1>Dashboard</h1>
-      <p>Overview of your DVSA slot monitors</p>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1>Dashboard</h1>
+          <p>Overview of your DVSA slot monitors</p>
+        </div>
+        <div id="push-btn-wrap">
+          ${pushState === "granted"
+            ? `<button class="btn btn-push btn-push-on" onclick="unsubscribePush()">🔔 Notifications On</button>`
+            : pushState === "denied"
+            ? `<span class="push-denied">🔕 Notifications blocked in browser</span>`
+            : `<button class="btn btn-push" onclick="subscribePush()">🔔 Enable Notifications</button>`}
+        </div>
+      </div>
     </div>
     <div class="cards-grid">
       <div class="stat-card">
@@ -607,6 +645,69 @@ function togglePw(id, btn) {
   } else {
     input.type = "password";
     btn.textContent = "👁";
+  }
+}
+
+// ─── Push Notifications ───────────────────────────────────────────────────────
+async function getPushState() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return "unsupported";
+  return Notification.permission;
+}
+
+async function getSwRegistration() {
+  await navigator.serviceWorker.register("/sw.js");
+  return navigator.serviceWorker.ready;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function subscribePush() {
+  if (!("Notification" in window)) {
+    showToast("Push notifications not supported in this browser.", "error");
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    showToast("Notification permission denied.", "error");
+    document.getElementById("push-btn-wrap").innerHTML =
+      `<span class="push-denied">🔕 Notifications blocked in browser</span>`;
+    return;
+  }
+
+  try {
+    const { key } = await apiFetch("/api/push/vapid-public-key");
+    const reg = await getSwRegistration();
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key)
+    });
+    await apiFetch("/api/push/subscribe", "POST", sub.toJSON());
+    showToast("🔔 Push notifications enabled!", "success");
+    document.getElementById("push-btn-wrap").innerHTML =
+      `<button class="btn btn-push btn-push-on" onclick="unsubscribePush()">🔔 Notifications On</button>`;
+  } catch (e) {
+    showToast("Could not enable notifications: " + e.message, "error");
+  }
+}
+
+async function unsubscribePush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await apiFetch("/api/push/unsubscribe", "DELETE", { endpoint: sub.endpoint });
+      await sub.unsubscribe();
+    }
+    showToast("Notifications turned off.", "success");
+    document.getElementById("push-btn-wrap").innerHTML =
+      `<button class="btn btn-push" onclick="subscribePush()">🔔 Enable Notifications</button>`;
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
   }
 }
 

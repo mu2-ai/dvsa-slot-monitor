@@ -391,6 +391,28 @@ body {
 
 .info-box strong { color: var(--text); }
 
+/* ── Push Notification Button ── */
+.btn-push {
+  background: rgba(108,99,255,0.15);
+  border: 1px solid rgba(108,99,255,0.4);
+  color: var(--accent);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-push:hover { background: rgba(108,99,255,0.25); }
+.btn-push-on {
+  background: rgba(46,213,115,0.12);
+  border-color: rgba(46,213,115,0.4);
+  color: var(--success);
+}
+.btn-push-on:hover { background: rgba(46,213,115,0.2); }
+.push-denied { font-size: 0.82rem; color: var(--muted); }
+
 /* ── Slot Banner (top notification) ── */
 .slot-banner {
   display: flex;

@@ -79,23 +79,18 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
+const DEV_USER_ID = 3; // TODO: re-enable auth when ready
 function auth(req, res, next) {
-  if (!req.session?.userId) return res.status(401).json({ error: "Not logged in" });
-  req.user = { id: req.session.userId, email: req.session.email };
+  req.user = { id: DEV_USER_ID, email: "dev@local" };
   next();
 }
 
 function requireVerified(req, res, next) {
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id);
-  if (!user.verified) return res.status(403).json({ error: "Please verify your email first" });
   next();
 }
 
 function requireSubscription(req, res, next) {
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id);
-  const trialActive = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
-  if (user.subscription_status === "active" || trialActive) return next();
-  return res.status(402).json({ error: "Subscription required", upgrade: true });
+  next(); // TODO: re-enable subscription check when ready
 }
 
 // ─── Auth Routes ──────────────────────────────────────────────────────────────

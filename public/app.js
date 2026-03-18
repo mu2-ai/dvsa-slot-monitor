@@ -23,21 +23,12 @@ async function render() {
     showToast("🎉 Payment successful! Subscription activated.", "success");
   }
 
-  try {
-    const res = await fetch("/api/me", { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      userEmail = data.email;
-      userSub = data.subscription;
-      userTrialActive = data.trialActive;
-      userTrialEnds = data.trialEnds;
-      renderLayout();
-    } else {
-      renderAuth("login");
-    }
-  } catch {
-    renderAuth("login");
-  }
+  // TODO: re-enable auth when ready
+  userEmail = "dev@local";
+  userSub = "active";
+  userTrialActive = true;
+  userTrialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  renderLayout();
 }
 
 function showToast(msg, type = "success") {

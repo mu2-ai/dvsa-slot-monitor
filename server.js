@@ -109,10 +109,11 @@ app.post("/api/register", async (req, res) => {
     const verifyToken = crypto.randomBytes(32).toString("hex");
     const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
+    const trialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const result = db.prepare(`
-      INSERT INTO users (email, password, verify_token, verify_expires)
-      VALUES (?, ?, ?, ?)
-    `).run(email.toLowerCase().trim(), hashed, verifyToken, verifyExpires);
+      INSERT INTO users (email, password, verify_token, verify_expires, trial_ends_at, subscription_status)
+      VALUES (?, ?, ?, ?, ?, 'trial')
+    `).run(email.toLowerCase().trim(), hashed, verifyToken, verifyExpires, trialEnds);
 
     sendVerificationEmail(email, verifyToken).catch(e => console.error("Verify email error:", e.message));
 

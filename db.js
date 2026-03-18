@@ -20,7 +20,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS monitors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    dvsa_licence TEXT NOT NULL,
+    dvsa_licence TEXT DEFAULT '',
     dvsa_theory TEXT NOT NULL,
     telegram_token TEXT DEFAULT '',
     telegram_chat_id TEXT DEFAULT '',
@@ -58,30 +58,22 @@ db.exec(`
   );
 `);
 
-// Migration: make telegram fields and dvsa_licence optional on existing DBs
-// SQLite can't drop NOT NULL, so we recreate the table if needed
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS monitors_new (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      dvsa_licence TEXT DEFAULT '',
-      dvsa_theory TEXT NOT NULL,
-      telegram_token TEXT DEFAULT '',
-      telegram_chat_id TEXT DEFAULT '',
-      centres TEXT DEFAULT 'ALL_LONDON',
-      active INTEGER DEFAULT 1,
-      last_checked DATETIME,
-      last_result TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    INSERT OR IGNORE INTO monitors_new SELECT * FROM monitors;
-    DROP TABLE monitors;
-    ALTER TABLE monitors_new RENAME TO monitors;
-  `);
-} catch (e) {
-  // Already migrated or migration not needed
+// ─── Migrations (safe ALTER TABLE ADD COLUMN — no-ops if column exists) ───────
+const migrations = [
+  // users table: add columns added after initial deployment
+  "ALTER TABLE users ADD COLUMN verified INTEGER DEFAULT 0",
+  "ALTER TABLE users ADD COLUMN verify_token TEXT",
+  "ALTER TABLE users ADD COLUMN verify_expires DATETIME",
+  "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT",
+  "ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'trial'",
+  "ALTER TABLE users ADD COLUMN trial_ends_at DATETIME",
+  // monitors table: make telegram/licence optional
+  "ALTER TABLE monitors ADD COLUMN telegram_token TEXT DEFAULT ''",
+  "ALTER TABLE monitors ADD COLUMN telegram_chat_id TEXT DEFAULT ''",
+];
+
+for (const sql of migrations) {
+  try { db.exec(sql); } catch {}
 }
 
 module.exports = db;

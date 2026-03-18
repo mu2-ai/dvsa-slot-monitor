@@ -1,16 +1,23 @@
 const API = "";
-let token = localStorage.getItem("dvsa_token");
-let userEmail = localStorage.getItem("dvsa_email");
+let userEmail = null;
 let currentPage = "dashboard";
 
 const app = document.getElementById("app");
 
 // ─── Router ──────────────────────────────────────────────────────────────────
-function render() {
-  if (!token) {
+async function render() {
+  // Check session via server (cookie-based, no localStorage)
+  try {
+    const res = await fetch("/api/me", { credentials: "include" });
+    if (res.ok) {
+      const data = await res.json();
+      userEmail = data.email;
+      renderLayout();
+    } else {
+      renderAuth("login");
+    }
+  } catch {
     renderAuth("login");
-  } else {
-    renderLayout();
   }
 }
 
@@ -98,10 +105,7 @@ function renderAuth(mode) {
         btn.textContent = isLogin ? "Sign In" : "Create Account";
         return;
       }
-      token = data.token;
       userEmail = data.email;
-      localStorage.setItem("dvsa_token", token);
-      localStorage.setItem("dvsa_email", userEmail);
       render();
     } catch (e) {
       errDiv.innerHTML = `<div class="error-msg">Connection error. Try again.</div>`;
@@ -146,10 +150,9 @@ function navigate(page) {
   renderLayout();
 }
 
-function logout() {
-  token = null;
+async function logout() {
+  await fetch("/api/logout", { method: "POST", credentials: "include" });
   userEmail = null;
-  localStorage.clear();
   render();
 }
 
@@ -405,10 +408,8 @@ async function deleteMonitor(id) {
 async function apiFetch(url, method = "GET", body = null) {
   const opts = {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
+    credentials: "include",
+    headers: { "Content-Type": "application/json" }
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(API + url, opts);

@@ -34,6 +34,12 @@ db.exec(`
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (monitor_id) REFERENCES monitors(id)
   );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid TEXT PRIMARY KEY,
+    sess TEXT NOT NULL,
+    expired DATETIME NOT NULL
+  );
 `);
 
 module.exports = db;

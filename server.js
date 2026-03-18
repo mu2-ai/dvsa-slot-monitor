@@ -1,30 +1,41 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+const session = require("express-session");
+const SqliteStore = require("better-sqlite3-session-store")(session);
 const cron = require("node-cron");
 const cors = require("cors");
 const path = require("path");
 const db = require("./db");
 const { runMonitor, sendTelegram } = require("./monitor");
+const { sendWelcomeEmail, sendSlotAlertEmail } = require("./email");
 
 const app = express();
-const JWT_SECRET = process.env.JWT_SECRET || "dvsa-monitor-secret-2024";
 const PORT = process.env.PORT || 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET || "dvsa-session-secret-2024";
 
-app.use(cors());
+// ─── Sessions (DB-backed, httpOnly cookie) ────────────────────────────────────
+app.use(session({
+  store: new SqliteStore({ client: db, expired: { clear: true, intervalMs: 900000 } }),
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
+}));
+
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
 function auth(req, res, next) {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "No token" });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid token" });
-  }
+  if (!req.session?.userId) return res.status(401).json({ error: "Not logged in" });
+  req.user = { id: req.session.userId, email: req.session.email };
+  next();
 }
 
 // ─── Auth Routes ───────────────────────────────────────────────────────────────
@@ -35,10 +46,15 @@ app.post("/api/register", async (req, res) => {
 
   try {
     const hashed = await bcrypt.hash(password, 12);
-    const stmt = db.prepare("INSERT INTO users (email, password) VALUES (?, ?)");
-    const result = stmt.run(email.toLowerCase().trim(), hashed);
-    const token = jwt.sign({ id: result.lastInsertRowid, email }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, email });
+    const result = db.prepare("INSERT INTO users (email, password) VALUES (?, ?)").run(email.toLowerCase().trim(), hashed);
+
+    req.session.userId = result.lastInsertRowid;
+    req.session.email = email.toLowerCase().trim();
+
+    // Send welcome email (non-blocking)
+    sendWelcomeEmail(email).catch(e => console.error("Welcome email failed:", e.message));
+
+    res.json({ email: req.session.email });
   } catch (e) {
     if (e.message.includes("UNIQUE")) return res.status(400).json({ error: "Email already registered" });
     res.status(500).json({ error: "Server error" });
@@ -53,14 +69,25 @@ app.post("/api/login", async (req, res) => {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ error: "Invalid email or password" });
 
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-  res.json({ token, email: user.email });
+  req.session.userId = user.id;
+  req.session.email = user.email;
+  res.json({ email: user.email });
+});
+
+app.post("/api/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.json({ message: "Logged out" });
+  });
+});
+
+app.get("/api/me", auth, (req, res) => {
+  res.json({ email: req.user.email });
 });
 
 // ─── Monitor Routes ────────────────────────────────────────────────────────────
 app.get("/api/monitors", auth, (req, res) => {
   const monitors = db.prepare("SELECT * FROM monitors WHERE user_id = ?").all(req.user.id);
-  // Mask credentials for display
   const safe = monitors.map(m => ({
     ...m,
     dvsa_licence: m.dvsa_licence.substring(0, 4) + "****",
@@ -74,12 +101,10 @@ app.post("/api/monitors", auth, (req, res) => {
   if (!dvsa_licence || !dvsa_theory || !telegram_token || !telegram_chat_id) {
     return res.status(400).json({ error: "All fields required" });
   }
-
-  const stmt = db.prepare(`
+  const result = db.prepare(`
     INSERT INTO monitors (user_id, dvsa_licence, dvsa_theory, telegram_token, telegram_chat_id)
     VALUES (?, ?, ?, ?, ?)
-  `);
-  const result = stmt.run(req.user.id, dvsa_licence.trim(), dvsa_theory.trim(), telegram_token.trim(), telegram_chat_id.trim());
+  `).run(req.user.id, dvsa_licence.trim(), dvsa_theory.trim(), telegram_token.trim(), telegram_chat_id.trim());
   res.json({ id: result.lastInsertRowid, message: "Monitor created" });
 });
 
@@ -95,20 +120,18 @@ app.patch("/api/monitors/:id/toggle", auth, (req, res) => {
   res.json({ active: !monitor.active });
 });
 
-// Manual test trigger
 app.post("/api/monitors/:id/test", auth, async (req, res) => {
   const monitor = db.prepare("SELECT * FROM monitors WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
   if (!monitor) return res.status(404).json({ error: "Not found" });
 
-  res.json({ message: "Test started — check your Telegram in ~60 seconds" });
+  res.json({ message: "Test started — check your Telegram & email in ~60 seconds" });
 
-  // Run in background
   runMonitor(monitor).then(result => {
     db.prepare("UPDATE monitors SET last_checked = CURRENT_TIMESTAMP, last_result = ? WHERE id = ?")
       .run(JSON.stringify(result), monitor.id);
     if (result.status === "no_slots") {
       sendTelegram(monitor.telegram_token, monitor.telegram_chat_id,
-        `🔍 <b>Manual Check Complete</b>\n\nNo slots available right now across all London centres.\n🔄 Auto-check runs every 5 minutes.`
+        `🔍 <b>Manual Check Complete</b>\n\nNo slots right now across all London centres.\n🔄 Auto-check every 5 minutes.`
       );
     }
   });
@@ -121,9 +144,9 @@ app.get("/api/alerts/:monitorId", auth, (req, res) => {
   res.json(alerts);
 });
 
-// ─── Cron: Every 5 minutes ─────────────────────────────────────────────────────
+// ─── Cron: Every 5 minutes ────────────────────────────────────────────────────
 cron.schedule("*/5 * * * *", async () => {
-  const monitors = db.prepare("SELECT * FROM monitors WHERE active = 1").all();
+  const monitors = db.prepare("SELECT m.*, u.email as user_email FROM monitors m JOIN users u ON m.user_id = u.id WHERE m.active = 1").all();
   console.log(`[CRON] Running ${monitors.length} active monitors`);
 
   for (const monitor of monitors) {
@@ -132,10 +155,14 @@ cron.schedule("*/5 * * * *", async () => {
       .run(JSON.stringify(result), monitor.id);
 
     if (result.status === "slots_found") {
+      // Save to DB
       result.available.forEach(slot => {
         db.prepare("INSERT INTO alerts (monitor_id, centre_name, slot_dates) VALUES (?, ?, ?)")
           .run(monitor.id, slot.name, slot.dates.join(", "));
       });
+      // Send email confirmation
+      sendSlotAlertEmail(monitor.user_email, result.available)
+        .catch(e => console.error("Slot alert email failed:", e.message));
     }
   }
 });

@@ -7,7 +7,6 @@ RUN npx playwright install chromium --with-deps
 
 COPY . .
 
-ENV PORT=3000
-EXPOSE 3000
+EXPOSE 8080
 
 CMD ["node", "server.js"]

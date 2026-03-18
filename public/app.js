@@ -142,7 +142,13 @@ function renderAuth(mode) {
         return;
       }
       if (!isLogin) {
-        renderVerifyScreen(email);
+        if (data.autoVerified) {
+          // SMTP not configured — account auto-verified, go straight to login
+          showToast("✅ Account created! Sign in now.", "success");
+          renderAuth("login");
+        } else {
+          renderVerifyScreen(email);
+        }
         return;
       }
       userEmail = data.email;

@@ -115,13 +115,26 @@ app.post("/api/register", async (req, res) => {
       VALUES (?, ?, ?, ?, ?, 'trial')
     `).run(email.toLowerCase().trim(), hashed, verifyToken, verifyExpires, trialEnds);
 
-    sendVerificationEmail(email, verifyToken).catch(e => console.error("Verify email error:", e.message));
+    // If SMTP not configured, auto-verify so users can still log in
+    if (!process.env.SMTP_USER) {
+      db.prepare("UPDATE users SET verified = 1 WHERE id = ?").run(result.lastInsertRowid);
+      return res.json({ message: "Account created! You can now log in.", email, autoVerified: true });
+    }
+
+    try {
+      await sendVerificationEmail(email, verifyToken);
+    } catch (emailErr) {
+      console.error("Verify email error:", emailErr.message);
+      // Auto-verify as fallback so registration still works
+      db.prepare("UPDATE users SET verified = 1 WHERE id = ?").run(result.lastInsertRowid);
+      return res.json({ message: "Account created! You can now log in.", email, autoVerified: true });
+    }
 
     res.json({ message: "Account created! Please check your email to verify your account.", email });
   } catch (e) {
     if (e.message.includes("UNIQUE")) return res.status(400).json({ error: "Email already registered" });
     console.error("Register error:", e.message);
-    res.status(500).json({ error: "Server error: " + e.message });
+    res.status(500).json({ error: "Server error" });
   }
 });
 

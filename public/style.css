@@ -26,22 +26,92 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at top, #1a1040 0%, var(--bg) 60%);
+  position: relative;
+  overflow: hidden;
+  background: #0a0a0f;
+}
+
+.auth-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('https://images.unsplash.com/photo-1489824904134-891ab64532f1?w=1600&q=80');
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.25) saturate(0.8);
+  z-index: 0;
+}
+
+.auth-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0,0,80,0.7) 0%, rgba(180,0,0,0.3) 100%);
+  z-index: 1;
+}
+
+/* Driving lanes overlay */
+.auth-wrap .lanes {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  z-index: 2;
 }
 
 .auth-box {
-  background: var(--card);
-  border: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
+  background: rgba(10, 10, 20, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 16px;
-  padding: 48px 40px;
+  padding: 0;
   width: 100%;
-  max-width: 420px;
-  box-shadow: 0 24px 80px rgba(108,99,255,0.15);
+  max-width: 440px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+
+/* Driving licence top stripe */
+.licence-stripe {
+  background: linear-gradient(90deg, #003082 0%, #c8102e 50%, #003082 100%);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.licence-stripe .uk-flag {
+  font-size: 1.4rem;
+}
+
+.licence-stripe .dvla-text {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.licence-stripe .chip {
+  width: 28px;
+  height: 20px;
+  background: linear-gradient(135deg, #d4a843, #f0c060, #d4a843);
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+
+.auth-box-inner {
+  padding: 32px 36px 40px;
 }
 
 .auth-logo {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .auth-logo .icon { font-size: 3rem; }

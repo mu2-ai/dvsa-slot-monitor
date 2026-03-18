@@ -19,7 +19,14 @@ function renderAuth(mode) {
   const isLogin = mode === "login";
   app.innerHTML = `
     <div class="auth-wrap">
+      <div class="lanes"></div>
       <div class="auth-box">
+        <div class="licence-stripe">
+          <span class="uk-flag">🇬🇧</span>
+          <span class="dvla-text">DVSA · Slot Monitor</span>
+          <span class="chip"></span>
+        </div>
+        <div class="auth-box-inner">
         <div class="auth-logo">
           <div class="icon">🚗</div>
           <h1>DVSA Slot Monitor</h1>
@@ -54,6 +61,7 @@ function renderAuth(mode) {
           ${isLogin
             ? `Don't have an account? <a onclick="renderAuth('register')">Sign up</a>`
             : `Already have an account? <a onclick="renderAuth('login')">Sign in</a>`}
+        </div>
         </div>
       </div>
     </div>

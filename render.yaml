@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: dvsa-slot-monitor
+    runtime: docker
+    plan: free
+    envVars:
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: APP_URL
+        value: https://dvsa-slot-monitor.onrender.com

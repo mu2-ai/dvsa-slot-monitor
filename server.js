@@ -120,7 +120,8 @@ app.post("/api/register", async (req, res) => {
     res.json({ message: "Account created! Please check your email to verify your account.", email });
   } catch (e) {
     if (e.message.includes("UNIQUE")) return res.status(400).json({ error: "Email already registered" });
-    res.status(500).json({ error: "Server error" });
+    console.error("Register error:", e.message);
+    res.status(500).json({ error: "Server error: " + e.message });
   }
 });
 

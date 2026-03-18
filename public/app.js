@@ -1,17 +1,34 @@
 const API = "";
 let userEmail = null;
+let userSub = null;
+let userTrialActive = false;
+let userTrialEnds = null;
 let currentPage = "dashboard";
 
 const app = document.getElementById("app");
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 async function render() {
-  // Check session via server (cookie-based, no localStorage)
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("verified") === "success") {
+    window.history.replaceState({}, "", "/");
+    showToast("✅ Email verified! You can now log in.", "success");
+  } else if (params.get("verified") === "expired") {
+    window.history.replaceState({}, "", "/");
+    showToast("⚠️ Verification link expired. Request a new one.", "error");
+  } else if (params.get("payment") === "success") {
+    window.history.replaceState({}, "", "/");
+    showToast("🎉 Payment successful! Subscription activated.", "success");
+  }
+
   try {
     const res = await fetch("/api/me", { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       userEmail = data.email;
+      userSub = data.subscription;
+      userTrialActive = data.trialActive;
+      userTrialEnds = data.trialEnds;
       renderLayout();
     } else {
       renderAuth("login");
@@ -19,6 +36,14 @@ async function render() {
   } catch {
     renderAuth("login");
   }
+}
+
+function showToast(msg, type = "success") {
+  const t = document.createElement("div");
+  t.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:0.9rem;font-weight:600;color:#fff;background:${type==="success"?"#2ed573":"#ff4757"};box-shadow:0 8px 24px rgba(0,0,0,0.3);animation:slideIn 0.3s ease`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
 }
 
 // ─── Auth Pages ───────────────────────────────────────────────────────────────
@@ -40,15 +65,16 @@ function renderAuth(mode) {
           <p>Get notified when London test slots open</p>
         </div>
         <div id="auth-error"></div>
-        <form id="auth-form">
+        <form id="auth-form" autocomplete="off">
+          <input type="text" style="display:none" aria-hidden="true" />
           <div class="form-group">
             <label>Email Address</label>
-            <input type="email" id="email" placeholder="you@example.com" required />
+            <input type="email" id="email" placeholder="you@example.com" autocomplete="off" required />
           </div>
           <div class="form-group">
             <label>Password ${!isLogin ? "(min. 8 characters)" : ""}</label>
             <div style="position:relative">
-              <input type="password" id="password" placeholder="••••••••" required style="padding-right:44px" />
+              <input type="password" id="password" placeholder="••••••••" autocomplete="${isLogin ? "current-password" : "new-password"}" required style="padding-right:44px" />
               <button type="button" onclick="togglePw('password',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem">👁</button>
             </div>
           </div>
@@ -56,7 +82,7 @@ function renderAuth(mode) {
           <div class="form-group">
             <label>Confirm Password</label>
             <div style="position:relative">
-              <input type="password" id="confirm" placeholder="••••••••" required style="padding-right:44px" />
+              <input type="password" id="confirm" placeholder="••••••••" autocomplete="new-password" required style="padding-right:44px" />
               <button type="button" onclick="togglePw('confirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem">👁</button>
             </div>
           </div>` : ""}
@@ -100,18 +126,69 @@ function renderAuth(mode) {
       });
       const data = await res.json();
       if (!res.ok) {
-        errDiv.innerHTML = `<div class="error-msg">${data.error}</div>`;
+        if (data.unverified) {
+          errDiv.innerHTML = `
+            <div class="error-msg">
+              ${data.error}
+              <br/><a onclick="resendVerification('${email}')" style="color:#fff;cursor:pointer;text-decoration:underline">Resend verification email</a>
+            </div>`;
+        } else {
+          errDiv.innerHTML = `<div class="error-msg">${data.error}</div>`;
+        }
         btn.disabled = false;
         btn.textContent = isLogin ? "Sign In" : "Create Account";
         return;
       }
+      if (!isLogin) {
+        renderVerifyScreen(email);
+        return;
+      }
       userEmail = data.email;
+      userSub = data.subscription;
+      userTrialActive = data.trialActive;
+      userTrialEnds = data.trialEnds;
       render();
     } catch (e) {
       errDiv.innerHTML = `<div class="error-msg">Connection error. Try again.</div>`;
       btn.disabled = false;
     }
   };
+}
+
+// ─── Verify Email Screen ──────────────────────────────────────────────────────
+function renderVerifyScreen(email) {
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="lanes"></div>
+      <div class="auth-box">
+        <div class="licence-stripe">
+          <span class="uk-flag">🇬🇧</span>
+          <span class="dvla-text">DVSA · Slot Monitor</span>
+          <span class="chip"></span>
+        </div>
+        <div class="auth-box-inner" style="text-align:center">
+          <div style="font-size:3rem;margin-bottom:16px">📧</div>
+          <h2 style="margin-bottom:8px">Check your email</h2>
+          <p style="color:var(--muted);margin-bottom:24px;line-height:1.6">
+            We sent a verification link to<br/>
+            <strong style="color:var(--text)">${email}</strong>
+          </p>
+          <p style="color:var(--muted);font-size:0.85rem;margin-bottom:20px">Click the link in the email to activate your account.</p>
+          <button class="btn btn-ghost btn-full" onclick="resendVerification('${email}')">Resend email</button>
+          <div class="auth-switch" style="margin-top:16px">
+            Already verified? <a onclick="renderAuth('login')">Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function resendVerification(email) {
+  await fetch("/api/resend-verification", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  showToast("✉️ Verification email resent!", "success");
 }
 
 // ─── Dashboard Layout ─────────────────────────────────────────────────────────
@@ -131,6 +208,9 @@ function renderLayout() {
         </button>
         <button class="nav-item ${currentPage==='alerts'?'active':''}" onclick="navigate('alerts')">
           🔔 Alert History
+        </button>
+        <button class="nav-item ${currentPage==='billing'?'active':''}" onclick="navigate('billing')">
+          💳 Billing
         </button>
         <div class="sidebar-footer">
           <div class="user-info">Signed in as<br/><strong>${userEmail}</strong></div>
@@ -167,6 +247,8 @@ async function loadPage(page) {
     await renderMonitors(main);
   } else if (page === "alerts") {
     await renderAlerts(main);
+  } else if (page === "billing") {
+    await renderBilling(main);
   }
 }
 
@@ -174,7 +256,45 @@ async function renderDashboard(el) {
   const monitors = await apiFetch("/api/monitors");
   const active = monitors.filter(m => m.active).length;
 
+  // Collect recent slots from last_result
+  const slotsFound = [];
+  for (const m of monitors) {
+    if (m.last_result) {
+      try {
+        const r = JSON.parse(m.last_result);
+        if (r.status === "slots_found" && r.available) {
+          slotsFound.push(...r.available);
+        }
+      } catch {}
+    }
+  }
+
+  // Fetch latest alerts (last 24h)
+  let recentAlerts = [];
+  for (const m of monitors) {
+    try {
+      const alerts = await apiFetch(`/api/alerts/${m.id}`);
+      const recent = alerts.filter(a => {
+        const age = Date.now() - new Date(a.sent_at).getTime();
+        return age < 24 * 60 * 60 * 1000;
+      });
+      recentAlerts = recentAlerts.concat(recent);
+    } catch {}
+  }
+  recentAlerts.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+
+  const slotBanner = recentAlerts.length > 0 ? `
+    <div class="slot-banner">
+      <div class="slot-banner-icon">🚗</div>
+      <div class="slot-banner-content">
+        <strong>Slots Available Right Now!</strong>
+        <p>${recentAlerts.map(a => `${a.centre_name}: ${a.slot_dates}`).join(" · ")}</p>
+      </div>
+      <a href="https://www.gov.uk/book-driving-test" target="_blank" class="btn btn-book">Book Now →</a>
+    </div>` : "";
+
   el.innerHTML = `
+    ${slotBanner}
     <div class="page-header">
       <h1>Dashboard</h1>
       <p>Overview of your DVSA slot monitors</p>
@@ -197,7 +317,7 @@ async function renderDashboard(el) {
             ? `<span class="badge badge-green">● LIVE</span>`
             : `<span class="badge badge-gray">● PAUSED</span>`}
         </div>
-        <div class="sub">Telegram alerts enabled</div>
+        <div class="sub">${recentAlerts.length > 0 ? `${recentAlerts.length} slot(s) found recently` : "In-dashboard alerts enabled"}</div>
       </div>
     </div>
 
@@ -225,9 +345,8 @@ async function renderMonitors(el) {
       <p>Manage your DVSA slot monitors</p>
     </div>
     <div class="info-box">
-      <strong>How it works:</strong> Enter your DVSA credentials and Telegram details.
-      The system logs into DVSA as you and checks all London test centres every 5 minutes.
-      You get an instant Telegram message when a slot opens up.
+      <strong>How it works:</strong> Enter your DVSA theory test certificate number.
+      The system checks all London test centres every 5 minutes and shows available slots right here in your dashboard.
     </div>
     <button class="btn btn-success" onclick="showAddModal()" style="margin-bottom:24px">
       + Add New Monitor
@@ -251,19 +370,34 @@ function monitorCard(m, showActions) {
     : "Never";
   const result = m.last_result ? JSON.parse(m.last_result) : null;
 
+  let slotsHtml = "";
+  if (result && result.status === "slots_found" && result.available) {
+    slotsHtml = `
+      <div class="slots-found-box">
+        <strong>🚗 Slots Available!</strong>
+        ${result.available.map(s => `
+          <div class="slot-row">
+            <span class="slot-centre">📍 ${s.name}</span>
+            <span class="slot-dates">${s.dates.join(", ")}</span>
+          </div>`).join("")}
+        <a href="https://www.gov.uk/book-driving-test" target="_blank" class="btn btn-book btn-sm" style="margin-top:10px">Book Now →</a>
+      </div>`;
+  }
+
   return `
-    <div class="monitor-card">
+    <div class="monitor-card ${result && result.status === "slots_found" ? "has-slots" : ""}">
       <div class="monitor-status ${m.active ? 'active' : 'inactive'}"></div>
       <div class="monitor-info">
-        <h3>Monitor #${m.id} — ${m.dvsa_licence}</h3>
-        <p>Telegram: ${m.telegram_chat_id} · Last check: ${lastChecked}</p>
+        <h3>Monitor #${m.id}${m.dvsa_licence ? ` — ${m.dvsa_licence}` : ""}</h3>
+        <p>Last check: ${lastChecked}</p>
         ${result ? `<p style="margin-top:4px">
           ${result.status === 'slots_found'
-            ? `<span class="badge badge-green">Slots found!</span>`
+            ? `<span class="badge badge-green">✓ Slots found!</span>`
             : result.status === 'error'
             ? `<span class="badge badge-red">Error: ${result.error?.substring(0,40)}</span>`
-            : `<span class="badge badge-gray">No slots</span>`}
+            : `<span class="badge badge-gray">No slots right now</span>`}
         </p>` : ""}
+        ${slotsHtml}
       </div>
       ${showActions ? `
       <div class="monitor-actions">
@@ -300,7 +434,7 @@ async function renderAlerts(el) {
   el.innerHTML = `
     <div class="page-header">
       <h1>Alert History</h1>
-      <p>All slots found and notifications sent</p>
+      <p>All slots found across London centres</p>
     </div>
     ${allAlerts.length === 0
       ? `<div class="empty-state">
@@ -316,8 +450,62 @@ async function renderAlerts(el) {
             <p>Slots: ${a.slot_dates}</p>
             <p>${new Date(a.sent_at).toLocaleString("en-GB")}</p>
           </div>
+          <a href="https://www.gov.uk/book-driving-test" target="_blank" class="btn btn-book btn-sm">Book →</a>
         </div>`).join("")}
   `;
+}
+
+async function renderBilling(el) {
+  const trialEndsDate = userTrialEnds ? new Date(userTrialEnds).toLocaleDateString("en-GB") : null;
+  const isActive = userSub === "active";
+  const isTrial = userTrialActive;
+
+  el.innerHTML = `
+    <div class="page-header">
+      <h1>Billing</h1>
+      <p>Manage your subscription</p>
+    </div>
+    <div class="stat-card" style="max-width:480px;margin-bottom:24px">
+      <div class="label">CURRENT PLAN</div>
+      <div class="value" style="font-size:1.3rem;margin-bottom:8px">
+        ${isActive ? `<span class="badge badge-green">● Active Subscription</span>`
+          : isTrial ? `<span class="badge badge-green" style="background:rgba(0,212,170,0.15);color:var(--accent2)">● Free Trial</span>`
+          : `<span class="badge badge-red">● No Active Plan</span>`}
+      </div>
+      ${isTrial && trialEndsDate ? `<div class="sub">Trial ends: ${trialEndsDate}</div>` : ""}
+      ${isActive ? `<div class="sub" style="margin-top:8px">Full access to all monitors and alerts</div>` : ""}
+    </div>
+    ${!isActive ? `
+    <div class="info-box" style="max-width:480px;margin-bottom:20px">
+      <strong>Upgrade to continue monitoring</strong><br/>
+      Get unlimited monitors, instant slot notifications, and priority checking across all London test centres.
+    </div>
+    <button class="btn btn-primary" style="max-width:480px" onclick="startCheckout()">
+      💳 Subscribe Now
+    </button>` : `
+    <button class="btn btn-ghost" style="max-width:480px" onclick="cancelSub()">
+      Cancel Subscription
+    </button>`}
+  `;
+}
+
+async function startCheckout() {
+  try {
+    const data = await apiFetch("/api/create-checkout", "POST");
+    window.location.href = data.url;
+  } catch (e) {
+    showToast(e.message, "error");
+  }
+}
+
+async function cancelSub() {
+  if (!confirm("Cancel your subscription? You'll keep access until the end of the billing period.")) return;
+  try {
+    await apiFetch("/api/cancel-subscription", "POST");
+    showToast("Subscription will cancel at end of billing period.", "success");
+  } catch (e) {
+    showToast(e.message, "error");
+  }
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
@@ -331,24 +519,16 @@ function showAddModal() {
         <h2>➕ Add New Monitor</h2>
         <div id="modal-error"></div>
         <div class="info-box">
-          Your DVSA credentials are stored securely and only used to check slot availability on your behalf.
+          Enter your DVSA theory test certificate to start monitoring. Slots will appear directly in your dashboard.
         </div>
         <form id="add-form">
           <div class="form-group">
-            <label>🪪 Driving Licence Number</label>
-            <input type="text" id="m-licence" placeholder="e.g. JONES961102W99YT" required />
+            <label>🪪 Driving Licence Number <span style="color:var(--muted);font-size:0.8rem">(optional — only needed to book)</span></label>
+            <input type="text" id="m-licence" placeholder="e.g. JONES961102W99YT" />
           </div>
           <div class="form-group">
-            <label>📋 Theory Test Pass Certificate Number</label>
+            <label>📋 Theory Test Pass Certificate Number <span style="color:var(--danger)">*</span></label>
             <input type="text" id="m-theory" placeholder="e.g. C1234567890A" required />
-          </div>
-          <div class="form-group">
-            <label>🤖 Telegram Bot Token</label>
-            <input type="text" id="m-token" placeholder="1234567890:AAFxxx..." required />
-          </div>
-          <div class="form-group">
-            <label>💬 Telegram Chat ID (personal or group)</label>
-            <input type="text" id="m-chat" placeholder="637985448 or -100xxxxxxx" required />
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -366,11 +546,9 @@ function showAddModal() {
     btn.textContent = "Saving...";
 
     try {
-      const res = await apiFetch("/api/monitors", "POST", {
-        dvsa_licence: document.getElementById("m-licence").value,
+      await apiFetch("/api/monitors", "POST", {
+        dvsa_licence: document.getElementById("m-licence").value || "",
         dvsa_theory: document.getElementById("m-theory").value,
-        telegram_token: document.getElementById("m-token").value,
-        telegram_chat_id: document.getElementById("m-chat").value,
       });
       closeModal();
       await renderMonitors(document.getElementById("main-content"));
@@ -390,7 +568,8 @@ function closeModal() {
 // ─── Monitor Actions ──────────────────────────────────────────────────────────
 async function testMonitor(id) {
   await apiFetch(`/api/monitors/${id}/test`, "POST");
-  alert("Test started! Check your Telegram in ~60 seconds.");
+  showToast("Test started! Results will appear in dashboard in ~60 seconds.", "success");
+  setTimeout(() => renderMonitors(document.getElementById("main-content")), 65000);
 }
 
 async function toggleMonitor(id) {

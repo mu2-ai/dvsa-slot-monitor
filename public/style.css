@@ -230,7 +230,30 @@ body {
 
 .user-info { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
 
-.main { flex: 1; padding: 32px; overflow-y: auto; }
+.main {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+  position: relative;
+  background-color: var(--bg);
+}
+
+.main::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 240px;
+  right: 0;
+  bottom: 0;
+  background-image: url('https://images.unsplash.com/photo-1489824904134-891ab64532f1?w=1600&q=80');
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.08) saturate(0.5);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.main > * { position: relative; z-index: 1; }
 
 .page-header { margin-bottom: 28px; }
 .page-header h1 { font-size: 1.6rem; font-weight: 700; }
@@ -368,8 +391,76 @@ body {
 
 .info-box strong { color: var(--text); }
 
+/* ── Slot Banner (top notification) ── */
+.slot-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(46,213,115,0.18) 0%, rgba(0,212,170,0.12) 100%);
+  border: 1px solid rgba(46,213,115,0.4);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+  animation: pulseGreen 2s ease-in-out infinite;
+}
+
+@keyframes pulseGreen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46,213,115,0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(46,213,115,0); }
+}
+
+.slot-banner-icon { font-size: 2rem; flex-shrink: 0; }
+
+.slot-banner-content { flex: 1; }
+.slot-banner-content strong { color: var(--success); font-size: 1rem; }
+.slot-banner-content p { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
+
+/* ── Book button ── */
+.btn-book {
+  background: var(--success);
+  color: #000;
+  font-weight: 700;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.btn-book:hover { background: #25c264; transform: translateY(-1px); }
+
+/* ── Slots found inside monitor card ── */
+.monitor-card.has-slots {
+  border-color: rgba(46,213,115,0.4);
+  background: linear-gradient(135deg, rgba(46,213,115,0.05) 0%, var(--card) 100%);
+}
+
+.slots-found-box {
+  margin-top: 12px;
+  background: rgba(46,213,115,0.08);
+  border: 1px solid rgba(46,213,115,0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.slots-found-box strong { color: var(--success); font-size: 0.9rem; }
+
+.slot-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 0.82rem;
+}
+.slot-centre { color: var(--text); font-weight: 500; }
+.slot-dates { color: var(--accent2); }
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .main { padding: 20px; }
+  .main::before { left: 0; }
   .cards-grid { grid-template-columns: 1fr; }
+  .slot-banner { flex-wrap: wrap; }
 }

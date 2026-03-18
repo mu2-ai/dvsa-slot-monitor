@@ -317,7 +317,7 @@ app.delete("/api/push/unsubscribe", auth, (req, res) => {
 });
 
 // ─── Cron ─────────────────────────────────────────────────────────────────────
-cron.schedule("*/5 * * * *", async () => {
+cron.schedule("0 */2 * * *", async () => {
   const monitors = db.prepare(`
     SELECT m.*, u.email as user_email, u.subscription_status, u.trial_ends_at
     FROM monitors m JOIN users u ON m.user_id = u.id
